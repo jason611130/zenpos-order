@@ -19,10 +19,6 @@
   .store{font-size:30px;font-weight:800;line-height:1.15}
   .sub{color:var(--muted);font-size:15px;margin-top:4px}
   .bell{font-size:26px}
-  /* search */
-  .search{display:flex;align-items:center;gap:9px;background:#e9e9ef;border-radius:14px;padding:12px 14px;margin:18px 0 6px}
-  .search input{border:0;background:transparent;outline:0;font-size:16px;width:100%;color:var(--text)}
-  .search svg{width:18px;height:18px;fill:var(--muted);flex:0 0 auto}
   /* section title */
   h2{font-size:22px;font-weight:800;margin:22px 0 12px}
   .count{color:var(--muted);font-size:15px;font-weight:600}
@@ -100,12 +96,7 @@
       <div class="bell">🔔</div>
     </div>
 
-    <div class="search">
-      <svg viewBox="0 0 24 24"><path d="M10 2a8 8 0 105.29 14.03l5.34 5.34 1.41-1.41-5.34-5.34A8 8 0 0010 2zm0 2a6 6 0 110 12 6 6 0 010-12z"/></svg>
-      <input id="search" placeholder="搜尋餐點" autocomplete="off">
-    </div>
-
-    <h2>餐點分類</h2>
+    <h2 style="margin-top:20px">餐點分類</h2>
     <div class="cats" id="cats"></div>
 
     <h2 style="display:flex;align-items:center;justify-content:space-between">
@@ -201,19 +192,16 @@
     const el=document.getElementById('cats');
     el.innerHTML=categories.map((c,i)=>`<button class="cat ${selectedCat===c.id?'on':''}" style="background:${CAT_COLORS[i%CAT_COLORS.length]}" onclick="pickCat('${c.id}')">${esc(c.name)}</button>`).join('');
   }
-  function pickCat(id){selectedCat=id;document.getElementById('search').value='';renderCats();renderGrid();}
+  function pickCat(id){selectedCat=id;renderCats();renderGrid();}
 
   function visibleItems(){
-    const q=document.getElementById('search').value.trim().toLowerCase();
-    if(q) return products.filter(p=>p.name.toLowerCase().includes(q)||(p.desc||'').toLowerCase().includes(q));
     if(selectedCat==='all') return products;
     return products.filter(p=>p.category===selectedCat);
   }
   function renderGrid(){
     const items=visibleItems();
-    const q=document.getElementById('search').value.trim();
     const cat=categories.find(c=>c.id===selectedCat);
-    document.getElementById('section-title').textContent=q?'搜尋結果':(cat?cat.name:'推薦餐點');
+    document.getElementById('section-title').textContent=cat?cat.name:'推薦餐點';
     document.getElementById('section-count').textContent=items.length+' 項';
     const grid=document.getElementById('grid');
     if(!items.length){grid.innerHTML='<div class="empty">找不到符合的餐點</div>';return;}
