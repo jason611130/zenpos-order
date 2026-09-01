@@ -155,11 +155,7 @@
 
     <div class="label" style="margin-left:2px">付款方式</div>
     <div class="block">
-      <div class="seg">
-        <button data-pay="cash" onclick="setPay('cash',this)">現金</button>
-        <button data-pay="creditCard" onclick="setPay('creditCard',this)">信用卡</button>
-        <button data-pay="mobilePayment" class="on" onclick="setPay('mobilePayment',this)">行動支付</button>
-      </div>
+      <div class="seg" id="pay-seg"></div>
     </div>
 
     <div class="block"><input class="field" id="note" placeholder="備註（可留空）"></div>
@@ -186,8 +182,10 @@
   const CAT_EMOJI=['🍴','☕️','🥡','🥗','🔥','🎂'];
   const FOOD_EMOJI=['🍔','🍕','🍜','🍱','🥤','🍰'];
 
+  const PAY_LABELS={cash:'現金',creditCard:'信用卡',mobilePayment:'行動支付'};
   let store=null, categories=[], products=[], selectedCat='all', tableCount=1, signature='';
-  let cart=[], currentItem=null, optQtyN=1, dining=null, tableNo='', pay='mobilePayment';
+  let payMethods=['cash','creditCard','mobilePayment'];
+  let cart=[], currentItem=null, optQtyN=1, dining=null, tableNo='', pay='';
 
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const api=async(url,opt={})=>{const r=await fetch(API_BASE+url,{...opt,headers:{'Content-Type':'application/json',...(opt.headers||{})}});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'操作失敗');return r.json()};
@@ -289,9 +287,14 @@
     el.innerHTML=Array.from({length:Math.max(1,tableCount)},(_,i)=>i+1).map(n=>`<button class="${tableNo==String(n)?'on':''}" onclick="pickTable('${n}')">${n}</button>`).join('');
   }
   function pickTable(n){tableNo=String(n);renderTables();}
-  function setPay(p,btn){pay=p;document.querySelectorAll('[data-pay]').forEach(b=>b.classList.remove('on'));btn.classList.add('on');}
+  function setPay(p){pay=p;renderPay();}
+  function renderPay(){
+    if(!payMethods.includes(pay))pay=payMethods[0]||'';
+    document.getElementById('pay-seg').innerHTML=payMethods.map(m=>
+      `<button class="${pay===m?'on':''}" onclick="setPay('${m}')">${PAY_LABELS[m]||m}</button>`).join('');
+  }
 
-  function openCart(){renderCartItems();renderTables();openSheet('cart-sheet');}
+  function openCart(){renderCartItems();renderTables();renderPay();openSheet('cart-sheet');}
   function openSheet(id){document.getElementById('mask').classList.add('show');document.getElementById(id).classList.add('show');}
   function closeAll(){document.getElementById('mask').classList.remove('show');document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('show'));}
 
@@ -321,9 +324,10 @@
 
   async function refresh(){
     if(!store)return;
-    const [s,cats,menu]=await Promise.all([api(`/stores/${store.id}`),api(`/stores/${store.id}/categories`),api(`/stores/${store.id}/menu-items`)]);
-    const sig=JSON.stringify([s.name,s.tableCount,cats,menu]);
+    const [s,cats,menu,pays]=await Promise.all([api(`/stores/${store.id}`),api(`/stores/${store.id}/categories`),api(`/stores/${store.id}/menu-items`),api(`/stores/${store.id}/payment-methods`).catch(()=>payMethods)]);
+    const sig=JSON.stringify([s.name,s.tableCount,cats,menu,pays]);
     if(sig===signature)return; signature=sig;
+    if(Array.isArray(pays)&&pays.length){payMethods=pays;renderPay();}
     store=s; tableCount=s.tableCount||s.effectiveTableCount||12;
     categories=[...cats].sort((a,b)=>(a.sortOrder||0)-(b.sortOrder||0));
     products=menu.filter(m=>m.enabled).map(m=>({id:m.id,name:m.name,category:m.categoryId,price:m.price,desc:m.description||'',imagePath:m.imagePath,optionGroups:m.optionGroups||[]}));
