@@ -133,13 +133,10 @@
 
     <div class="label" style="margin-left:2px">用餐方式</div>
     <div class="block">
-      <div class="seg" style="margin-bottom:12px">
-        <button id="dine-in" onclick="setDining('dineIn')">🍽 內用</button>
-        <button id="dine-out" onclick="setDining('takeout')">🥡 外帶</button>
-      </div>
+      <div class="seg" id="dine-seg" style="margin-bottom:12px"></div>
       <div id="table-wrap" style="display:none">
         <div class="label">桌號</div>
-        <div class="tables" id="tables"></div>
+        <div id="table-area"></div>
       </div>
     </div>
 
@@ -173,9 +170,10 @@
   const FOOD_EMOJI=['🍔','🍕','🍜','🍱','🥤','🍰'];
 
   const PAY_LABELS={cash:'現金',creditCard:'信用卡',mobilePayment:'行動支付'};
+  const DINING_LABELS={dineIn:'🍽 內用',takeout:'🥡 外帶'};
   let store=null, categories=[], products=[], selectedCat='all', tableCount=1, signature='';
-  let payMethods=['cash','creditCard','mobilePayment'];
-  let cart=[], currentItem=null, optQtyN=1, dining=null, tableNo='', pay='';
+  let payMethods=['cash','creditCard','mobilePayment'], diningOptions=['dineIn','takeout'];
+  let cart=[], currentItem=null, optQtyN=1, dining=null, tableNo='', pay='', showTables=true;
 
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const api=async(url,opt={})=>{const r=await fetch(API_BASE+url,{...opt,headers:{'Content-Type':'application/json',...(opt.headers||{})}});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'操作失敗');return r.json()};
@@ -260,19 +258,30 @@
     document.getElementById('checkout-total').textContent='$'+cartTotal();
   }
 
-  function setDining(d){dining=d;
-    document.getElementById('dine-in').classList.toggle('on',d==='dineIn');
-    document.getElementById('dine-out').classList.toggle('on',d==='takeout');
-    document.getElementById('table-wrap').style.display=d==='dineIn'?'block':'none';
+  function renderDining(){
+    if(dining&&!diningOptions.includes(dining))dining=null;
+    document.getElementById('dine-seg').innerHTML=diningOptions.map(d=>
+      `<button class="${dining===d?'on':''}" onclick="setDining('${d}')">${DINING_LABELS[d]||d}</button>`).join('');
+    document.getElementById('table-wrap').style.display=dining==='dineIn'?'block':'none';
+  }
+  function setDining(d){
+    dining=d;
     if(d==='takeout')tableNo='外帶';
-    if(d==='dineIn'&&tableNo==='外帶')tableNo='';
-    renderTables();
+    if(d==='dineIn'){ if(tableNo==='外帶')tableNo=''; showTables=tableNo===''; }
+    renderDining();renderTables();
   }
   function renderTables(){
-    const el=document.getElementById('tables');
-    el.innerHTML=Array.from({length:Math.max(1,tableCount)},(_,i)=>i+1).map(n=>`<button class="${tableNo==String(n)?'on':''}" onclick="pickTable('${n}')">${n}</button>`).join('');
+    const el=document.getElementById('table-area');
+    if(!showTables&&tableNo&&tableNo!=='外帶'){
+      // 選完桌號就收起，只顯示已選 + 更改
+      el.innerHTML=`<div class="row" style="padding:6px 0"><span style="font-weight:800;color:var(--accent)">${tableNo} 號桌</span>
+        <button style="border:0;background:#e9e9ef;border-radius:10px;padding:8px 14px;font-weight:700;cursor:pointer" onclick="editTables()">更改桌號</button></div>`;
+      return;
+    }
+    el.innerHTML=`<div class="tables">${Array.from({length:Math.max(1,tableCount)},(_,i)=>i+1).map(n=>`<button class="${tableNo==String(n)?'on':''}" onclick="pickTable('${n}')">${n}</button>`).join('')}</div>`;
   }
-  function pickTable(n){tableNo=String(n);renderTables();}
+  function pickTable(n){tableNo=String(n);showTables=false;renderTables();}
+  function editTables(){showTables=true;renderTables();}
   function setPay(p){pay=p;renderPay();}
   function renderPay(){
     if(!payMethods.includes(pay))pay=payMethods[0]||'';
@@ -280,7 +289,7 @@
       `<button class="${pay===m?'on':''}" onclick="setPay('${m}')">${PAY_LABELS[m]||m}</button>`).join('');
   }
 
-  function openCart(){renderCartItems();renderTables();renderPay();openSheet('cart-sheet');}
+  function openCart(){renderCartItems();renderDining();renderTables();renderPay();openSheet('cart-sheet');}
   function openSheet(id){document.getElementById('mask').classList.add('show');document.getElementById(id).classList.add('show');}
   function closeAll(){document.getElementById('mask').classList.remove('show');document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('show'));}
 
@@ -303,17 +312,18 @@
     }catch(e){alert(e.message);}
     finally{btn.disabled=false;btn.textContent='送出訂單';}
   }
-  function resetOrder(){cart=[];dining=null;tableNo='';document.getElementById('note').value='';
+  function resetOrder(){cart=[];dining=null;tableNo='';showTables=true;document.getElementById('note').value='';
     document.getElementById('success').classList.remove('show');
-    document.getElementById('dine-in').classList.remove('on');document.getElementById('dine-out').classList.remove('on');
+    if(diningOptions.length===1)setDining(diningOptions[0]); else renderDining();
     updateCart();renderGrid();}
 
   async function refresh(){
     if(!store)return;
-    const [s,cats,menu,pays]=await Promise.all([api(`/stores/${store.id}`),api(`/stores/${store.id}/categories`),api(`/stores/${store.id}/menu-items`),api(`/stores/${store.id}/payment-methods`).catch(()=>payMethods)]);
-    const sig=JSON.stringify([s.name,s.tableCount,cats,menu,pays]);
+    const [s,cats,menu,pays,dines]=await Promise.all([api(`/stores/${store.id}`),api(`/stores/${store.id}/categories`),api(`/stores/${store.id}/menu-items`),api(`/stores/${store.id}/payment-methods`).catch(()=>payMethods),api(`/stores/${store.id}/dining-options`).catch(()=>diningOptions)]);
+    const sig=JSON.stringify([s.name,s.tableCount,cats,menu,pays,dines]);
     if(sig===signature)return; signature=sig;
     if(Array.isArray(pays)&&pays.length){payMethods=pays;renderPay();}
+    if(Array.isArray(dines)&&dines.length){diningOptions=dines; if(!dining&&dines.length===1)setDining(dines[0]); else renderDining();}
     store=s; tableCount=s.tableCount||s.effectiveTableCount||12;
     categories=[...cats].sort((a,b)=>(a.sortOrder||0)-(b.sortOrder||0));
     products=menu.filter(m=>m.enabled).map(m=>({id:m.id,name:m.name,category:m.categoryId,price:m.price,desc:m.description||'',imagePath:m.imagePath,optionGroups:m.optionGroups||[]}));
