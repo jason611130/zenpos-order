@@ -176,9 +176,13 @@
 <script>
   const routeParts=location.pathname.split('/').filter(Boolean);
   const params=new URLSearchParams(location.search);
-  // 由後端直接提供時 api/store 留空；GitHub Pages 等外部託管用 ?api=後端網址&store=店家ID
-  const API_BASE=(params.get('api')||'https://speed-dts-asia-operating.trycloudflare.com').replace(/\/+$/,'');
-  const storeId=params.get('store')||(routeParts[0]==='order'?routeParts[1]:null)||'8dd7a9a8-7257-4ed7-bf04-31ee1d9c50a1';
+  // 後端網址優先序：?api= 參數 > 同目錄 config.json 的 api > 同源（後端自己提供時）
+  let API_BASE=(params.get('api')||'').replace(/\/+$/,'');
+  const storeId=params.get('store')||(routeParts[0]==='order'?routeParts[1]:null);
+  async function resolveApiBase(){
+    if(API_BASE)return;
+    try{const c=await(await fetch('config.json',{cache:'no-store'})).json();if(c&&c.api)API_BASE=String(c.api).replace(/\/+$/,'');}catch(e){}
+  }
   const CAT_COLORS=['var(--c0)','var(--c1)','var(--c2)','var(--c3)','var(--c4)','var(--c5)','var(--c6)'];
   const CAT_EMOJI=['🍴','☕️','🥡','🥗','🔥','🎂'];
   const FOOD_EMOJI=['🍔','🍕','🍜','🍱','🥤','🍰'];
@@ -355,6 +359,7 @@
 
   async function init(){
     try{
+      await resolveApiBase();
       if(storeId)store=await api(`/stores/${storeId}`);
       else{const all=await api('/stores');store=all[0];}
       if(!store)throw new Error('目前沒有可用店家');
