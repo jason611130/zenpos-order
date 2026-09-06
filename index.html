@@ -178,10 +178,10 @@
   const params=new URLSearchParams(location.search);
   // 後端網址優先序：?api= 參數 > 同目錄 config.json 的 api > 同源（後端自己提供時）
   let API_BASE=(params.get('api')||'').replace(/\/+$/,'');
-  const storeId=params.get('store')||(routeParts[0]==='order'?routeParts[1]:null);
+  let storeId=params.get('store')||(routeParts[0]==='order'?routeParts[1]:null);
   async function resolveApiBase(){
     if(API_BASE)return;
-    try{const c=await(await fetch('config.json',{cache:'no-store'})).json();if(c&&c.api)API_BASE=String(c.api).replace(/\/+$/,'');}catch(e){}
+    try{const c=await(await fetch('config.json',{cache:'no-store'})).json();if(c&&c.api)API_BASE=String(c.api).replace(/\/+$/,'');if(!storeId&&c&&c.storeId)storeId=String(c.storeId);}catch(e){}
   }
   const CAT_COLORS=['var(--c0)','var(--c1)','var(--c2)','var(--c3)','var(--c4)','var(--c5)','var(--c6)'];
   const CAT_EMOJI=['🍴','☕️','🥡','🥗','🔥','🎂'];
