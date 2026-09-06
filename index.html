@@ -360,8 +360,8 @@
   async function init(){
     try{
       await resolveApiBase();
-      if(storeId)store=await api(`/stores/${storeId}`);
-      else{const all=await api('/stores');store=all[0];}
+      if(!storeId)throw new Error('缺少店家識別碼，請使用店家專屬點餐網址。');
+      store=await api(`/stores/${encodeURIComponent(storeId)}`);
       if(!store)throw new Error('目前沒有可用店家');
       await refresh();
       setInterval(()=>refresh().catch(()=>{}),2000);
