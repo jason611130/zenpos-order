@@ -177,8 +177,8 @@
   const routeParts=location.pathname.split('/').filter(Boolean);
   const params=new URLSearchParams(location.search);
   // 由後端直接提供時 api/store 留空；GitHub Pages 等外部託管用 ?api=後端網址&store=店家ID
-  const API_BASE=(params.get('api')||'').replace(/\/+$/,'');
-  const storeId=params.get('store')||(routeParts[0]==='order'?routeParts[1]:null);
+  const API_BASE=(params.get('api')||'https://speed-dts-asia-operating.trycloudflare.com').replace(/\/+$/,'');
+  const storeId=params.get('store')||(routeParts[0]==='order'?routeParts[1]:null)||'8dd7a9a8-7257-4ed7-bf04-31ee1d9c50a1';
   const CAT_COLORS=['var(--c0)','var(--c1)','var(--c2)','var(--c3)','var(--c4)','var(--c5)','var(--c6)'];
   const CAT_EMOJI=['🍴','☕️','🥡','🥗','🔥','🎂'];
   const FOOD_EMOJI=['🍔','🍕','🍜','🍱','🥤','🍰'];
