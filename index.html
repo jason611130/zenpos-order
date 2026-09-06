@@ -178,19 +178,19 @@
   const params=new URLSearchParams(location.search);
   // 後端網址優先序：?api= 參數 > 同目錄 config.json 的 api > 同源（後端自己提供時）
   let API_BASE=(params.get('api')||'').replace(/\/+$/,'');
-  let storeId=params.get('store')||(routeParts[0]==='order'?routeParts[1]:null);
+  const storeId=params.get('store')||(routeParts[0]==='order'?routeParts[1]:null);
   async function resolveApiBase(){
     if(API_BASE)return;
-    try{const c=await(await fetch('config.json',{cache:'no-store'})).json();if(c&&c.api)API_BASE=String(c.api).replace(/\/+$/,'');if(!storeId&&c&&c.storeId)storeId=String(c.storeId);}catch(e){}
+    try{const c=await(await fetch('config.json',{cache:'no-store'})).json();if(c&&c.api)API_BASE=String(c.api).replace(/\/+$/,'');}catch(e){}
   }
   const CAT_COLORS=['var(--c0)','var(--c1)','var(--c2)','var(--c3)','var(--c4)','var(--c5)','var(--c6)'];
   const CAT_EMOJI=['🍴','☕️','🥡','🥗','🔥','🎂'];
   const FOOD_EMOJI=['🍔','🍕','🍜','🍱','🥤','🍰'];
 
-  const PAY_LABELS={cash:'現金',creditCard:'信用卡',mobilePayment:'行動支付'};
+  const PAY_LABELS={cash:'現金',creditCard:'信用卡',mobilePayment:'行動支付',transfer:'匯款'};
   const DINING_LABELS={dineIn:'🍽 內用',takeout:'🥡 外帶'};
   let store=null, categories=[], products=[], selectedCat='all', tableCount=1, signature='';
-  let payMethods=['cash','creditCard','mobilePayment'], diningOptions=['dineIn','takeout'];
+  let payMethods=['cash','creditCard','mobilePayment','transfer'], diningOptions=['dineIn','takeout'];
   let cart=[], currentItem=null, optQtyN=1, dining=null, tableNo='', pay='', showTables=true;
 
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
