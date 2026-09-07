@@ -363,6 +363,7 @@
       const order=await api(`/stores/${store.id}/orders`,{method:'POST',body:JSON.stringify({
         tableName:dining==='takeout'?'外帶':tableNo,
         note:'訂購人：'+customerName,
+        customerName:customerName,
         staffName:'客人網頁點餐',paymentMethod:pay,diningOption:dining,
         turnstileToken:turnstileToken||undefined,
         items:cart.map(c=>({menuItemId:c.id,quantity:c.qty,selectedOptions:c.addons.map(a=>({groupName:a.groupName||'加料',choiceName:a.name,priceDelta:a.price})),notes:c.notes||null}))
