@@ -96,9 +96,13 @@
   .opt{display:flex;align-items:center;justify-content:space-between;padding:12px;border:1px solid var(--line);border-radius:3px 12px 3px 12px;margin-bottom:8px;cursor:pointer;font-weight:600;background:#fffdf8}
   .opt:has(input:checked){border-color:var(--accent);background:#ebe2d6;color:#4b382a;box-shadow:inset 3px 0 var(--accent)}
   .opt input{width:20px;height:20px;accent-color:var(--accent)}
-  .success{position:fixed;inset:0;z-index:60;background:var(--bg);display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px}
+  .success{position:fixed;inset:0;z-index:60;background:var(--bg);display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;overflow:auto}
   .success.show{display:flex}
   .check{width:88px;height:88px;border-radius:50%;background:var(--c2);color:#fff;font-size:46px;display:flex;align-items:center;justify-content:center;margin-bottom:18px}
+  .transfer-card{width:100%;max-width:360px;background:var(--card);border:1px solid var(--line);border-radius:6px 18px 6px 18px;padding:16px;margin:0 0 18px;text-align:left;box-shadow:0 5px 18px #5d4a350a}
+  .transfer-title{font-family:"Noto Serif TC","Songti TC",serif;font-size:18px;font-weight:700;letter-spacing:.08em;margin-bottom:10px;color:var(--accent)}
+  .transfer-row{display:grid;grid-template-columns:72px 1fr;gap:10px;padding:7px 0;border-bottom:1px solid var(--line);line-height:1.45}
+  .transfer-row:last-child{border-bottom:0}.transfer-label{color:var(--muted);font-size:14px}.transfer-value{font-weight:700;overflow-wrap:anywhere}
   .err{color:#ff3b30;text-align:center;padding:40px 20px}
   .bot-check{background:var(--card);border-radius:16px;padding:14px;margin:0 0 16px}.bot-check-status{color:var(--muted);font-size:13px;margin-top:8px}
 </style>
@@ -179,6 +183,7 @@
     <div style="font-size:24px;font-weight:800">訂單已送出！</div>
     <div class="sub" id="order-id" style="margin-top:8px"></div>
     <div class="totalrow" style="width:100%;max-width:360px;margin-top:20px"><span>金額</span><span id="success-total">$0</span></div>
+    <div class="transfer-card" id="transfer-card" hidden><div class="transfer-title">匯款資訊</div><div id="transfer-details"></div></div>
     <button class="submit" style="max-width:360px" onclick="resetOrder()">再點一單</button>
   </div>
 
@@ -338,6 +343,14 @@
   function openSheet(id){document.getElementById('mask').classList.add('show');document.getElementById(id).classList.add('show');}
   function closeAll(){document.getElementById('mask').classList.remove('show');document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('show'));}
 
+  function renderTransferInfo(info){
+    const card=document.getElementById('transfer-card'),details=document.getElementById('transfer-details');
+    if(pay!=='transfer'){card.hidden=true;details.innerHTML='';return;}
+    card.hidden=false;
+    const rows=[['銀行',info?.bankName],['帳號',info?.accountNumber],['戶名',info?.accountHolder],['說明',info?.note]].filter(([,value])=>String(value||'').trim());
+    details.innerHTML=rows.length?rows.map(([label,value])=>`<div class="transfer-row"><span class="transfer-label">${label}</span><span class="transfer-value">${esc(value)}</span></div>`).join(''):'<div style="color:var(--muted);line-height:1.6">店家尚未設定匯款資訊，請聯絡店家確認。</div>';
+  }
+
   async function checkout(){
     if(!cart.length||!store)return;
     if(!dining){alert('請先選擇「內用」或「外帶」');return;}
@@ -357,12 +370,15 @@
       window.webkit?.messageHandlers?.zenposOrder?.postMessage(order);
       document.getElementById('success-total').textContent='$'+cartTotal();
       document.getElementById('order-id').textContent='訂單 #'+(order.orderNumber||order.id.slice(0,8).toUpperCase());
+      const transferInfo=pay==='transfer'?await api(`/stores/${store.id}/transfer-info`).catch(()=>null):null;
+      renderTransferInfo(transferInfo);
       closeAll();document.getElementById('success').classList.add('show');
     }catch(e){resetTurnstile();alert(e.message);}
     finally{btn.disabled=false;btn.textContent='送出訂單';}
   }
   function resetOrder(){cart=[];dining=null;tableNo='';showTables=true;document.getElementById('note').value='';
     resetTurnstile();
+    document.getElementById('transfer-card').hidden=true;document.getElementById('transfer-details').innerHTML='';
     document.getElementById('success').classList.remove('show');
     if(diningOptions.length===1)setDining(diningOptions[0]); else renderDining();
     updateCart();renderGrid();}
