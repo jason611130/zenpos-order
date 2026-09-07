@@ -73,7 +73,7 @@
   .citem:last-child{border-bottom:0}
   .ci-img{width:54px;height:54px;border-radius:12px;object-fit:cover;flex:0 0 auto;background:#fff2df;display:flex;align-items:center;justify-content:center;font-size:26px;overflow:hidden}
   .ci-img img{width:100%;height:100%;object-fit:cover}
-  .ci-info{flex:1;min-width:0}
+  .ci-info{flex:1;min-width:0}.ci-edit{display:block;width:100%;border:0;background:transparent;padding:0;text-align:left;color:inherit;cursor:pointer}.ci-edit .ci-name:after{content:"  編輯";color:var(--accent);font-size:12px;font-weight:800}.ci-note{color:var(--muted);font-size:12px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .ci-name{font-weight:750;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .ci-opt{color:var(--muted);font-size:12px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .ci-price{color:var(--accent);font-weight:800;margin-top:3px;font-size:15px}
@@ -136,8 +136,10 @@
     <div class="grab"></div>
     <h3 id="opt-title"></h3>
     <div class="block" id="opt-groups"></div>
+    <div class="label" style="margin-left:2px">單品備註</div>
+    <div class="block pad"><input class="field" id="opt-note" maxlength="200" placeholder="例如：醬料另外放（可留空）"></div>
     <div class="totalrow"><span class="stepper"><button onclick="optQty(-1)">−</button><span id="opt-qty">1</span><button onclick="optQty(1)">＋</button></span><span id="opt-price">$0</span></div>
-    <button class="submit" onclick="addOptToCart()">加入購物車</button>
+    <button class="submit" id="opt-submit" onclick="saveOptToCart()">加入購物車</button>
   </div>
 
   <!-- 購物車 / 結帳 -->
@@ -196,7 +198,7 @@
   const DINING_LABELS={dineIn:'🍽 內用',takeout:'🥡 外帶'};
   let store=null, categories=[], products=[], selectedCat='all', tableCount=1, signature='';
   let payMethods=['cash','creditCard','mobilePayment','transfer'], diningOptions=['dineIn','takeout'];
-  let cart=[], currentItem=null, optQtyN=1, dining=null, tableNo='', pay='', showTables=true;
+  let cart=[], currentItem=null, editingCartIndex=null, optQtyN=1, dining=null, tableNo='', pay='', showTables=true;
   let turnstileToken='',turnstileWidgetId=null,turnstileRetries=0;
 
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -238,31 +240,40 @@
 
   // 點餐點：有選項開選項表，沒選項直接加
   function tapItem(id){
-    currentItem=products.find(p=>p.id===id);
-    if(!(currentItem.optionGroups||[]).length){ addToCart(currentItem,1,[]); return; }
-    optQtyN=1;
+    const item=products.find(p=>p.id===id);
+    if(!(item.optionGroups||[]).length){ addToCart(item,1,[],""); return; }
+    openItemOptions(item,null);
+  }
+  function openItemOptions(item,cartIndex){
+    currentItem=item;editingCartIndex=cartIndex;
+    const existing=cartIndex===null?null:cart[cartIndex];
+    optQtyN=existing?.qty||1;
     document.getElementById('opt-title').textContent=currentItem.name;
     document.getElementById('opt-groups').innerHTML=currentItem.optionGroups.map((g,gi)=>`
       <div class="label" style="margin:2px 0 8px">${esc(g.name)}${g.required?'（必選）':''}</div>
       ${g.choices.map((ch,ci)=>`<label class="opt"><span>${esc(ch.name)}</span>
         <span style="display:flex;align-items:center;gap:10px"><span style="color:var(--accent);font-size:13px;font-weight:800">${ch.priceDelta?'+$'+ch.priceDelta:'免費'}</span>
-        <input type="${g.allowsMultiple?'checkbox':'radio'}" name="g${gi}" value="${ch.priceDelta||0}" data-g="${esc(g.name)}" data-n="${esc(ch.name)}" ${g.required&&ci===0?'checked':''} onchange="optPrice()"></span></label>`).join('')}`).join('');
-    document.getElementById('opt-qty').textContent=1;
-    optPrice(); openSheet('opt-sheet');
+        <input type="${g.allowsMultiple?'checkbox':'radio'}" name="g${gi}" value="${ch.priceDelta||0}" data-g="${esc(g.name)}" data-n="${esc(ch.name)}" ${(existing?existing.addons.some(a=>a.groupName===g.name&&a.name===ch.name):g.required&&ci===0)?'checked':''} onchange="optPrice()"></span></label>`).join('')}`).join('');
+    document.getElementById('opt-note').value=existing?.notes||'';
+    document.getElementById('opt-qty').textContent=optQtyN;
+    document.getElementById('opt-submit').textContent=existing?'更新品項':'加入購物車';
+    optPrice();closeAll();openSheet('opt-sheet');
   }
   function optSelected(){const a=[];document.querySelectorAll('#opt-groups input:checked').forEach(i=>a.push({groupName:i.dataset.g,name:i.dataset.n,price:Number(i.value)}));return a;}
   function optPrice(){const add=optSelected().reduce((s,o)=>s+o.price,0);document.getElementById('opt-price').textContent='$'+(currentItem.price+add)*optQtyN;}
   function optQty(d){optQtyN=Math.max(1,optQtyN+d);document.getElementById('opt-qty').textContent=optQtyN;optPrice();}
-  function addOptToCart(){addToCart(currentItem,optQtyN,optSelected());closeAll();}
+  function saveOptToCart(){const wasEditing=editingCartIndex!==null;addToCart(currentItem,optQtyN,optSelected(),document.getElementById('opt-note').value.trim(),editingCartIndex);editingCartIndex=null;closeAll();if(wasEditing){renderCartItems();renderDining();renderTables();renderPay();openSheet('cart-sheet');}}
 
-  function addToCart(item,qty,addons){
+  function addToCart(item,qty,addons,notes='',replaceIndex=null){
+    if(replaceIndex!==null)cart.splice(replaceIndex,1);
     const unit=item.price+addons.reduce((s,o)=>s+o.price,0);
-    const key=item.id+'|'+addons.map(a=>a.groupName+a.name).sort().join('_');
+    const key=item.id+'|'+addons.map(a=>a.groupName+a.name).sort().join('_')+'|'+notes;
     const ex=cart.find(c=>c.key===key);
-    if(ex)ex.qty+=qty; else cart.push({key,id:item.id,name:item.name,unit,addons,qty});
+    if(ex)ex.qty+=qty; else cart.push({key,id:item.id,name:item.name,unit,addons,notes,qty});
     updateCart();renderGrid();
   }
-  function changeQty(key,d){const it=cart.find(c=>c.key===key);if(!it)return;it.qty+=d;if(it.qty<=0)cart=cart.filter(c=>c.key!==key);updateCart();renderGrid();renderCartItems();}
+  function changeQty(index,d){const it=cart[index];if(!it)return;it.qty+=d;if(it.qty<=0)cart.splice(index,1);updateCart();renderGrid();renderCartItems();}
+  function editCartItem(index){const line=cart[index],item=line&&products.find(p=>p.id===line.id);if(!item||(item.optionGroups||[]).length===0)return;openItemOptions(item,index);}
 
   function cartTotal(){return cart.reduce((s,c)=>s+c.unit*c.qty,0);}
   function cartCount(){return cart.reduce((s,c)=>s+c.qty,0);}
@@ -276,14 +287,14 @@
     const el=document.getElementById('cart-items');
     document.getElementById('cart-title').textContent=`購物車${cart.length?'（'+cartCount()+' 件）':''}`;
     if(!cart.length){el.innerHTML='<div class="empty" style="padding:24px 0">購物車是空的</div>';}
-    else el.innerHTML=cart.map(c=>{
+    else el.innerHTML=cart.map((c,index)=>{
       const p=products.find(x=>x.id===c.id);
       const img=(p&&p.imagePath)?`<div class="ci-img"><img src="${esc(API_BASE+p.imagePath)}"></div>`:`<div class="ci-img">${foodEmoji(c.name)}</div>`;
       return `<div class="citem">${img}
-        <div class="ci-info"><div class="ci-name">${esc(c.name)}</div>
+        ${(p?.optionGroups||[]).length?`<button class="ci-info ci-edit" onclick="editCartItem(${index})" aria-label="重新編輯 ${esc(c.name)}"><div class="ci-name">${esc(c.name)}</div>
         ${c.addons.length?`<div class="ci-opt">${c.addons.map(a=>esc(a.name)).join('、')}</div>`:''}
-        <div class="ci-price">$${c.unit*c.qty}</div></div>
-        <span class="stepper"><button onclick="changeQty('${c.key}',-1)">−</button><span>${c.qty}</span><button onclick="changeQty('${c.key}',1)">＋</button></span></div>`;
+        ${c.notes?`<div class="ci-note">備註：${esc(c.notes)}</div>`:''}<div class="ci-price">$${c.unit*c.qty}</div></button>`:`<div class="ci-info"><div class="ci-name">${esc(c.name)}</div><div class="ci-price">$${c.unit*c.qty}</div></div>`}
+        <span class="stepper"><button onclick="changeQty(${index},-1)" aria-label="減少數量">−</button><span>${c.qty}</span><button onclick="changeQty(${index},1)" aria-label="增加數量">＋</button></span></div>`;
     }).join('');
     document.getElementById('checkout-total').textContent='$'+cartTotal();
   }
@@ -319,7 +330,7 @@
       `<button class="${pay===m?'on':''}" onclick="setPay('${m}')">${PAY_LABELS[m]||m}</button>`).join('');
   }
 
-  function renderTurnstile(){const wrap=document.getElementById('bot-check'),label=document.getElementById('bot-check-label'),status=document.getElementById('bot-check-status');if(!TURNSTILE_SITE_KEY){wrap.style.display='none';label.style.display='none';return}wrap.style.display='block';label.style.display='block';if(!window.turnstile){if(turnstileRetries++<20)setTimeout(renderTurnstile,250);return}turnstileToken='';status.textContent='請完成驗證後再送出訂單';if(turnstileWidgetId!==null){window.turnstile.reset(turnstileWidgetId);return}turnstileWidgetId=window.turnstile.render('#turnstile-widget',{sitekey:TURNSTILE_SITE_KEY,theme:'light',size:'flexible',action:'place_order',callback:token=>{turnstileToken=token;status.textContent='驗證完成，可以送出訂單'},'expired-callback':()=>{turnstileToken='';status.textContent='驗證已逾時，請重新驗證'},'error-callback':()=>{turnstileToken='';status.textContent='驗證載入失敗，請重新整理頁面'}})}
+  function renderTurnstile(){const wrap=document.getElementById('bot-check'),label=document.getElementById('bot-check-label'),status=document.getElementById('bot-check-status');wrap.style.display='block';label.style.display='block';if(!TURNSTILE_SITE_KEY){status.textContent='機器人驗證尚未啟用：請管理員設定 Cloudflare Turnstile 金鑰';return}if(!window.turnstile){status.textContent='正在載入機器人驗證…';if(turnstileRetries++<20)setTimeout(renderTurnstile,250);return}turnstileToken='';status.textContent='請完成驗證後再送出訂單';if(turnstileWidgetId!==null){window.turnstile.reset(turnstileWidgetId);return}turnstileWidgetId=window.turnstile.render('#turnstile-widget',{sitekey:TURNSTILE_SITE_KEY,theme:'light',size:'flexible',action:'place_order',callback:token=>{turnstileToken=token;status.textContent='驗證完成，可以送出訂單'},'expired-callback':()=>{turnstileToken='';status.textContent='驗證已逾時，請重新驗證'},'error-callback':()=>{turnstileToken='';status.textContent='驗證載入失敗，請重新整理頁面'}})}
   function resetTurnstile(){turnstileToken='';if(turnstileWidgetId!==null&&window.turnstile)window.turnstile.reset(turnstileWidgetId)}
   function openCart(){renderCartItems();renderDining();renderTables();renderPay();renderTurnstile();openSheet('cart-sheet');}
   function openSheet(id){document.getElementById('mask').classList.add('show');document.getElementById(id).classList.add('show');}
@@ -337,7 +348,7 @@
         note:document.getElementById('note').value||null,
         staffName:'客人網頁點餐',paymentMethod:pay,diningOption:dining,
         turnstileToken:turnstileToken||undefined,
-        items:cart.map(c=>({menuItemId:c.id,quantity:c.qty,selectedOptions:c.addons.map(a=>({groupName:a.groupName||'加料',choiceName:a.name,priceDelta:a.price})),notes:null}))
+        items:cart.map(c=>({menuItemId:c.id,quantity:c.qty,selectedOptions:c.addons.map(a=>({groupName:a.groupName||'加料',choiceName:a.name,priceDelta:a.price})),notes:c.notes||null}))
       })});
       window.webkit?.messageHandlers?.zenposOrder?.postMessage(order);
       document.getElementById('success-total').textContent='$'+cartTotal();
