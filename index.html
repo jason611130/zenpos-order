@@ -97,7 +97,9 @@
   .success.show{display:flex}
   .check{width:88px;height:88px;border-radius:50%;background:var(--c2);color:#fff;font-size:46px;display:flex;align-items:center;justify-content:center;margin-bottom:18px}
   .err{color:#ff3b30;text-align:center;padding:40px 20px}
+  .bot-check{background:var(--card);border-radius:16px;padding:14px;margin:0 0 16px}.bot-check-status{color:var(--muted);font-size:13px;margin-top:8px}
 </style>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
 </head>
 <body>
   <div class="wrap">
@@ -161,6 +163,9 @@
     <div class="label" style="margin-left:2px">備註</div>
     <div class="block pad"><input class="field" id="note" placeholder="有特別需求可以寫在這裡（可留空）"></div>
 
+    <div class="label" id="bot-check-label" style="margin-left:2px;display:none">機器人驗證</div>
+    <div class="bot-check" id="bot-check" style="display:none"><div id="turnstile-widget"></div><div class="bot-check-status" id="bot-check-status">請完成驗證後再送出訂單</div></div>
+
     <div class="totalrow"><span>總計</span><span id="checkout-total" style="color:var(--accent)">$0</span></div>
     <button class="submit" id="submit-btn" onclick="checkout()">送出訂單</button>
   </div>
@@ -178,10 +183,10 @@
   const params=new URLSearchParams(location.search);
   // 後端網址優先序：?api= 參數 > 同目錄 config.json 的 api > 同源（後端自己提供時）
   let API_BASE=(params.get('api')||'').replace(/\/+$/,'');
+  let TURNSTILE_SITE_KEY='';
   const storeId=params.get('store')||(routeParts[0]==='order'?routeParts[1]:null);
   async function resolveApiBase(){
-    if(API_BASE)return;
-    try{const c=await(await fetch('config.json',{cache:'no-store'})).json();if(c&&c.api)API_BASE=String(c.api).replace(/\/+$/,'');}catch(e){}
+    try{const c=await(await fetch('config.json',{cache:'no-store'})).json();if(!API_BASE&&c&&c.api)API_BASE=String(c.api).replace(/\/+$/,'');if(c&&c.turnstileSiteKey)TURNSTILE_SITE_KEY=String(c.turnstileSiteKey);}catch(e){}
   }
   const CAT_COLORS=['var(--c0)','var(--c1)','var(--c2)','var(--c3)','var(--c4)','var(--c5)','var(--c6)'];
   const CAT_EMOJI=['🍴','☕️','🥡','🥗','🔥','🎂'];
@@ -192,6 +197,7 @@
   let store=null, categories=[], products=[], selectedCat='all', tableCount=1, signature='';
   let payMethods=['cash','creditCard','mobilePayment','transfer'], diningOptions=['dineIn','takeout'];
   let cart=[], currentItem=null, optQtyN=1, dining=null, tableNo='', pay='', showTables=true;
+  let turnstileToken='',turnstileWidgetId=null,turnstileRetries=0;
 
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const api=async(url,opt={})=>{const r=await fetch(API_BASE+url,{...opt,headers:{'Content-Type':'application/json',...(opt.headers||{})}});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'操作失敗');return r.json()};
@@ -313,7 +319,9 @@
       `<button class="${pay===m?'on':''}" onclick="setPay('${m}')">${PAY_LABELS[m]||m}</button>`).join('');
   }
 
-  function openCart(){renderCartItems();renderDining();renderTables();renderPay();openSheet('cart-sheet');}
+  function renderTurnstile(){const wrap=document.getElementById('bot-check'),label=document.getElementById('bot-check-label'),status=document.getElementById('bot-check-status');if(!TURNSTILE_SITE_KEY){wrap.style.display='none';label.style.display='none';return}wrap.style.display='block';label.style.display='block';if(!window.turnstile){if(turnstileRetries++<20)setTimeout(renderTurnstile,250);return}turnstileToken='';status.textContent='請完成驗證後再送出訂單';if(turnstileWidgetId!==null){window.turnstile.reset(turnstileWidgetId);return}turnstileWidgetId=window.turnstile.render('#turnstile-widget',{sitekey:TURNSTILE_SITE_KEY,theme:'light',size:'flexible',action:'place_order',callback:token=>{turnstileToken=token;status.textContent='驗證完成，可以送出訂單'},'expired-callback':()=>{turnstileToken='';status.textContent='驗證已逾時，請重新驗證'},'error-callback':()=>{turnstileToken='';status.textContent='驗證載入失敗，請重新整理頁面'}})}
+  function resetTurnstile(){turnstileToken='';if(turnstileWidgetId!==null&&window.turnstile)window.turnstile.reset(turnstileWidgetId)}
+  function openCart(){renderCartItems();renderDining();renderTables();renderPay();renderTurnstile();openSheet('cart-sheet');}
   function openSheet(id){document.getElementById('mask').classList.add('show');document.getElementById(id).classList.add('show');}
   function closeAll(){document.getElementById('mask').classList.remove('show');document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('show'));}
 
@@ -321,22 +329,25 @@
     if(!cart.length||!store)return;
     if(!dining){alert('請先選擇「內用」或「外帶」');return;}
     if(dining==='dineIn'&&!tableNo){alert('內用請選擇桌號');return;}
+    if(TURNSTILE_SITE_KEY&&!turnstileToken){alert('請先完成機器人驗證');return;}
     const btn=document.getElementById('submit-btn');btn.disabled=true;btn.textContent='送出中…';
     try{
       const order=await api(`/stores/${store.id}/orders`,{method:'POST',body:JSON.stringify({
         tableName:dining==='takeout'?'外帶':tableNo,
         note:document.getElementById('note').value||null,
         staffName:'客人網頁點餐',paymentMethod:pay,diningOption:dining,
+        turnstileToken:turnstileToken||undefined,
         items:cart.map(c=>({menuItemId:c.id,quantity:c.qty,selectedOptions:c.addons.map(a=>({groupName:a.groupName||'加料',choiceName:a.name,priceDelta:a.price})),notes:null}))
       })});
       window.webkit?.messageHandlers?.zenposOrder?.postMessage(order);
       document.getElementById('success-total').textContent='$'+cartTotal();
       document.getElementById('order-id').textContent='訂單 #'+(order.orderNumber||order.id.slice(0,8).toUpperCase());
       closeAll();document.getElementById('success').classList.add('show');
-    }catch(e){alert(e.message);}
+    }catch(e){resetTurnstile();alert(e.message);}
     finally{btn.disabled=false;btn.textContent='送出訂單';}
   }
   function resetOrder(){cart=[];dining=null;tableNo='';showTables=true;document.getElementById('note').value='';
+    resetTurnstile();
     document.getElementById('success').classList.remove('show');
     if(diningOptions.length===1)setDining(diningOptions[0]); else renderDining();
     updateCart();renderGrid();}

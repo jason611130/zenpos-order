@@ -19,6 +19,20 @@ https://jason611130.github.io/zenpos-order/?store=店家ID
 - 沒有 `store` 的首頁不會任意顯示第一間店，避免不同店家的菜單與訂單混在一起。
 - 管理員可在後台「商店」或「帳號訂閱」頁直接開啟、複製各店網址。
 
+## 機器人驗證
+
+購物車支援 Cloudflare Turnstile。把公開的 `turnstileSiteKey` 放入 `config.json`，並把對應的私密 `TURNSTILE_SECRET_KEY` 放在 Windows 後端的 `backend/.env` 後，客人送出訂單前必須完成驗證。後端會呼叫 Cloudflare Siteverify 再驗一次，不能只靠前端畫面。
+
+```json
+{
+  "api": "https://你的後端.trycloudflare.com",
+  "updatedAt": "2026-09-07T00:00:00.000Z",
+  "turnstileSiteKey": "你的公開 Site Key"
+}
+```
+
+Secret Key 不可提交到 GitHub。
+
 ## 開啟 GitHub Pages
 
 1. 把整個 repo 推到 GitHub。
