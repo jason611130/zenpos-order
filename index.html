@@ -164,8 +164,8 @@
       <div class="seg" id="pay-seg"></div>
     </div>
 
-    <div class="label" style="margin-left:2px">備註</div>
-    <div class="block pad"><input class="field" id="note" placeholder="有特別需求可以寫在這裡（可留空）"></div>
+    <div class="label" style="margin-left:2px">訂購人名稱（必填）</div>
+    <div class="block pad"><input class="field" id="note" name="customerName" maxlength="50" autocomplete="name" required aria-required="true" placeholder="請輸入訂購人名稱"></div>
 
     <div class="label" id="bot-check-label" style="margin-left:2px;display:none">機器人驗證</div>
     <div class="bot-check" id="bot-check" style="display:none"><div id="turnstile-widget"></div><div class="bot-check-status" id="bot-check-status">請完成驗證後再送出訂單</div></div>
@@ -342,12 +342,14 @@
     if(!cart.length||!store)return;
     if(!dining){alert('請先選擇「內用」或「外帶」');return;}
     if(dining==='dineIn'&&!tableNo){alert('內用請選擇桌號');return;}
+    const customerName=document.getElementById('note').value.trim();
+    if(!customerName){alert('請輸入訂購人名稱');document.getElementById('note').focus();return;}
     if(TURNSTILE_SITE_KEY&&!turnstileToken){alert('請先完成機器人驗證');return;}
     const btn=document.getElementById('submit-btn');btn.disabled=true;btn.textContent='送出中…';
     try{
       const order=await api(`/stores/${store.id}/orders`,{method:'POST',body:JSON.stringify({
         tableName:dining==='takeout'?'外帶':tableNo,
-        note:document.getElementById('note').value||null,
+        note:'訂購人：'+customerName,
         staffName:'客人網頁點餐',paymentMethod:pay,diningOption:dining,
         turnstileToken:turnstileToken||undefined,
         items:cart.map(c=>({menuItemId:c.id,quantity:c.qty,selectedOptions:c.addons.map(a=>({groupName:a.groupName||'加料',choiceName:a.name,priceDelta:a.price})),notes:c.notes||null}))
